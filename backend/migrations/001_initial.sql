@@ -1,0 +1,6 @@
+-- First startup creates tables from SQLAlchemy metadata:
+-- users, window_datasets, sensor_windows, training_runs, threshold_policies,
+-- inspection_reviews, audit_logs.
+-- Natural keys: users.email, window_datasets.name,
+-- sensor_windows(dataset_id,reference), inspection_reviews(policy_id,window_id).
+-- Production schema changes require explicit migration planning.

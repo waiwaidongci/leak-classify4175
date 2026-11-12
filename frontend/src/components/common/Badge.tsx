@@ -1,0 +1,1 @@
+import {RUN_STATUS,POLICY_STATUS,VERDICTS} from '../../constants/enums';export function Badge({status}:{status:string}){return <span className={'badge '+status}>{RUN_STATUS[status]||POLICY_STATUS[status]||VERDICTS[status]||status}</span>}

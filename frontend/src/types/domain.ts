@@ -1,0 +1,10 @@
+export type User={id:number;email:string;name:string;role:string};
+export type Dataset={id:number;name:string;filename:string;description:string;count:number;positive:number;prevalence:number};
+export type Window={id:number;reference:string;features:Record<string,number>;label:number};
+export type Confusion={tp:number;tn:number;fp:number;fn:number;precision:number;recall:number;accuracy:number;total_cost:number;flagged:number};
+export type Prediction={window_id:number;reference:string;probability:number;predicted:number};
+export type Result={fingerprint:string;split_counts:Record<string,{n:number;positive:number}>;split_ids:Record<string,number[]>;comparisons:{features:string[];C:number;fold_auc:number[];mean_auc:number;std_auc:number}[];winner:{features:string[];C:number;mean_auc:number};recommendation:{threshold:number;validation_confusion:Confusion;selection_source:string;candidates:({threshold:number}&Confusion)[]};test:{auc:number;average_precision:number;prevalence:number;confusion:Confusion;roc:{x:number;y:number}[];pr:{x:number;y:number}[]};coefficients:{feature:string;coefficient:number}[];test_predictions:Prediction[];method:string};
+export type Run={id:number;name:string;dataset_id:number;status:string;config:{feature_sets:string[][];c_values:number[];false_negative_cost:number;false_positive_cost:number};result:Partial<Result>;error?:string;created_at:string};
+export type Policy={id:number;run_id:number;name:string;threshold:number;status:string;note:string;created_at:string};
+export type Review={id:number;policy_id:number;window_id:number;verdict:string;note:string;created_at:string};
+export type Audit={id:number;actor:string;action:string;detail:object;created_at:string};

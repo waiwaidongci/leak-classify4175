@@ -1,0 +1,1 @@
+import {request,post} from './client';import type {Run} from '../types/domain';export const runApi={all:()=>request<Run[]>('/runs'),create:(data:any)=>post('/runs',data),get:(id:number)=>request<Run>('/runs/'+id)};

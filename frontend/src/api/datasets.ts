@@ -1,0 +1,1 @@
+import {request,post} from './client';import type {Dataset,Window} from '../types/domain';export const datasetApi={all:()=>request<Dataset[]>('/datasets'),features:()=>request<Record<string,string>>('/features'),windows:(id:number)=>request<Window[]>('/datasets/'+id+'/windows'),create:(data:any)=>post('/datasets',data)};

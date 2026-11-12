@@ -1,6 +1,13 @@
--- First startup creates tables from SQLAlchemy metadata:
+-- First startup creates tables from SQLAlchemy metadata (see src/config/migrate.py):
 -- users, window_datasets, sensor_windows, training_runs, threshold_policies,
--- inspection_reviews, audit_logs.
+-- inspection_reviews, review_revisions, policy_archives, audit_logs.
 -- Natural keys: users.email, window_datasets.name,
 -- sensor_windows(dataset_id,reference), inspection_reviews(policy_id,window_id).
+--
+-- 更正与封存演进（ensure_schema 幂等执行，兼容已存在的库）：
+-- 1. inspection_reviews 增加 version（乐观锁版本号）与 updated_at；
+-- 2. review_revisions 追加式保留每次结论、更正原因、操作者与时间，
+--    升级前已存在的复核自动补登 revision_no=1 的历史；
+-- 3. policy_archives 保存编号封存名单的不可变 JSON 快照与 sha256 content_hash，
+--    按编号下载永远返回同一时点内容，后续更正只影响新封存。
 -- Production schema changes require explicit migration planning.

@@ -25,5 +25,5 @@ def seed():
   if not db.scalar(select(TrainingRun).where(TrainingRun.name=='夜间漏损基准研究')):
    admin=db.scalar(select(User).where(User.role=='admin'));config={'feature_sets':[list(FEATURES)[:3],list(FEATURES)],'c_values':[.1,1.],'false_negative_cost':8.,'false_positive_cost':1.}
    result=train_model(get_windows(db,dataset.id),config);run=TrainingRun(name='夜间漏损基准研究',dataset_id=dataset.id,status='succeeded',config=config,result=result,creator_id=admin.id);db.add(run);db.flush();db.add(ThresholdPolicy(name='夜间先复核 · 基准草案',run_id=run.id,threshold=result['recommendation']['threshold'],note='候选仅供人工复核，未自动派工。',creator_id=admin.id));db.add(AuditLog(actor='seed',action='demo.created',detail={'seed':73,'windows':1500}));db.commit()
-  counts={t.__tablename__:db.scalar(select(func.count()).select_from(t)) for t in [User,WindowDataset,SensorWindow,TrainingRun,ThresholdPolicy,InspectionReview]};print(json.dumps(counts));return counts
+  counts={t.__tablename__:db.scalar(select(func.count()).select_from(t)) for t in [User,WindowDataset,SensorWindow,TrainingRun,ThresholdPolicy,InspectionReview,ReviewRevision,PolicyArchive]};print(json.dumps(counts));return counts
 if __name__=='__main__':seed()

@@ -31,11 +31,14 @@ docker compose exec -T backend python -m scripts.seed_demo
 6. 读取模型比较与固定阈值：阈值仅由独立验证集成本选出；模型和阈值锁定后才评估留出集。
 7. 建立“夜间优先复核”策略，后端复制该验证阈值，界面没有手改阈值入口。
 8. 沈泊以admin审核策略；分析师在获批策略候选中记录“待复核/复核确认/复核排除”与现场说明。
+9. 现场结论记错时可在“阈值与复核”页发起**带原因的更正**：每次更正追加新版本，完整保留历次结论、更正原因、操作者与时间；`inspection_reviews.version` 作乐观锁，两人基于同一旧版本更正时后者收到409冲突提示，不会覆盖。viewer只读，观察员所有写入返回403。
+10. 获批策略可**封存为编号名单**（`CW-SEAL-策略号-序号`）：单事务内把当时全部候选与当前复核结论冻结为JSON快照并记录sha256，策略行锁（PostgreSQL `SELECT … FOR UPDATE`）使并发更正与封存就同一策略串行，名单保持同一时点，任一步失败整体回滚、不留半份。
+11. 按编号下载的CSV永远返回封存时点内容，不随后续更正变化；再次封存才反映最新结论。人工复核与更正只写复核表，不改动 `sensor_windows.label`，训练标签不受影响。viewer可下载与查看获批/封存内容，但不能封存或更正。
 9. viewer下载获批巡检参考CSV；人工复核不从训练标签自动生成，系统不自动派工。
 
 ## 数据和模型口径
 
-五个核心实体：WindowDataset、SensorWindow、TrainingRun、ThresholdPolicy、InspectionReview，分别经过数据库模型、Pydantic schema、service、route/API、store与页面。六个页面为判别席、窗口样本、训练配置、封存结果、阈值与复核、研究留痕。PerformanceSummary、CurvePlot、RunTable等业务组件跨页复用；同时有共享表格、Badge、Notice、Empty。
+五个核心实体：WindowDataset、SensorWindow、TrainingRun、ThresholdPolicy、InspectionReview，分别经过数据库模型、Pydantic schema、service、route/API、store与页面。复核侧另有追加式的 ReviewRevision（历次结论/原因/操作者/时间）与 PolicyArchive（编号封存名单的不可变快照+sha256）。六个页面为判别席、窗口样本、训练配置、封存结果、阈值与复核、研究留痕。PerformanceSummary、CurvePlot、RunTable等业务组件跨页复用；同时有共享表格、Badge、Notice、Empty，以及更正对话框 CorrectionDialog 与封存面板 ArchivePanel。
 
 允许六特征：night_flow（夜间流量L/s）、pressure_drop（有符号压力降kPa）、acoustic_energy（声学能量）、flow_variation（流量变异）、pipe_age（管龄年）、ambient_temp（环境温度°C）。label单独为0/1，API拒绝任何额外/缺失特征及把label作为入模特征。导入接受JSON窗口数组，100–5000行，每类至少20；reference批内唯一。没有CSV解析器，源文件名用于演示台账。
 
@@ -81,7 +84,16 @@ npm run dev
 
 目录：backend/src/{routes,controllers,services,models,schemas,middlewares,utils,constants,config}；backend/scripts/seed_demo.py；backend/migrations/；frontend/src/{api,stores,types,components/common,hooks,pages,router,utils,constants}。首次使用SQLAlchemy metadata建表，migrations内记结构，未配生产增量迁移工具。
 
-自然键插入确保seed可重复、不覆盖用户修改；只在没有基准研究时计算一次基准。RequestID和全局错误两个中间件提供可追踪请求；AuditLog保留登录、训练、策略和人工复核。CSV对公式前缀转义。共享枚举：backend/src/constants/enums.py的Role/RunStatus/PolicyStatus/Verdict，frontend/src/constants/enums.ts对应角色、运行/策略状态、复核标签；使用处为依赖鉴权、训练/策略/复核service/schema以及Badge/Layout/页面。全部测试脚本、截图、日志、CSV、结果报告位于批次根test-artifacts/gb-0008，不进入源码。
+自然键插入确保seed可重复、不覆盖用户修改；只在没有基准研究时计算一次基准。RequestID和全局错误两个中间件提供可追踪请求；AuditLog保留登录、训练、策略、人工复核（`inspection.recorded`）、结论更正（`inspection.corrected`，含from/to版本与原因）和名单封存（`archive.sealed`，含编号、计数与content_hash）。CSV对公式前缀转义。共享枚举：backend/src/constants/enums.py的Role/RunStatus/PolicyStatus/Verdict，frontend/src/constants/enums.ts对应角色、运行/策略状态、复核标签；使用处为依赖鉴权、训练/策略/复核service/schema以及Badge/Layout/页面。全部测试脚本、截图、日志、CSV、结果报告位于批次根test-artifacts/gb-0008，不进入源码。
+
+## 结论更正与名单封存口径
+
+- 复核结论以 `inspection_reviews` 保存当前态（含 `version` 乐观锁版本号与 `updated_at`），每次写入向 `review_revisions` 追加一条不可变历史：`revision_no`、结论、现场说明、更正原因、操作者、`base_version` 与时间。首次记录 reason 记为“首次现场复核”，更正必须填写非空原因。
+- 更正接口 `POST /reviews/corrections` 要求携带 `expected_version`；服务层以条件更新 `UPDATE … WHERE id=? AND version=expected` 把冲突检测下推到行级，版本不符返回409并提示当前版本，杜绝两人基于同一旧结论时的丢失更新。
+- 并发安全：复核首记、更正与封存都先经 `utils/locking.lock_policy` 锁定策略行。PostgreSQL 使用 `SELECT … FOR UPDATE` 行锁串行化同策略写入；SQLite 不支持行锁，依赖单写者事务与版本/唯一约束，代码对两种方言均兼容。
+- 封存 `POST /policies/{id}/seal` 仅对获批策略开放，在同一事务内读取与策略行锁一致时点的全部候选和当前结论，构建 `policy_archives` 快照（archive_no、threshold、逐窗口结论与结论版本、计数）并计算稳定排序的 sha256 `content_hash`；任何步骤失败整体回滚，不留半份名单。
+- 读取/下载封存（`GET /archives/{id}`、`/download`）先重算哈希校验，不匹配返回500而非返回被篡改内容；CSV列与现行巡检参考一致。按编号重复下载字节内容恒定，新封存独立编号、可反映之后的更正；封存与更正均不触碰 `sensor_windows.label`。
+- 已部署旧库在启动时经 `src/config/migrate.py` 幂等补齐 `version`/`updated_at` 列、创建新表，并为升级前已存在的复核补登第1版历史，不丢既有数据。
 
 ## 验收与边界
 
